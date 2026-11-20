@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Ular Tangga</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--ink:#0d2526;--lagoon:#164a4c;--sand:#f1e3bf;--jade:#58b39a;--saffron:#ffb42e;--coral:#ef5b4c;--wood:#5b3a1e}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:ui-rounded,"SF Pro Rounded","Nunito",system-ui,sans-serif;color:var(--sand);
+ background:radial-gradient(120% 70% at 50% 0,var(--lagoon),var(--ink));display:flex;flex-direction:column;
+ align-items:center;gap:10px;padding:10px 10px calc(10px + env(safe-area-inset-bottom));overflow:hidden}
+#players{display:flex;gap:6px;width:100%;max-width:520px}
+.pl{flex:1;min-width:0;background:#ffffff12;border-radius:12px;padding:6px 8px;display:flex;align-items:center;gap:6px;
+ border:2px solid transparent;transition:border-color .2s,background .2s}
+.pl.on{border-color:var(--saffron);background:#ffb42e22;animation:pulse 1.6s ease-in-out infinite}
+.pl i{width:14px;height:14px;border-radius:50%;flex:none;border:2px solid #fff}
+.pl b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl small{font-size:11px;opacity:.7}
+@keyframes pulse{50%{box-shadow:0 0 0 4px #ffb42e33}}
+#board{position:relative;width:min(100%,calc(100dvh - 270px),520px);aspect-ratio:1;border-radius:12px;display:grid;
+ grid-template:repeat(10,1fr)/repeat(10,1fr);box-shadow:0 0 0 5px var(--wood),0 0 0 8px #8a5a2b,0 14px 34px #000a}
+.sq{font-size:clamp(7px,2.2vw,11px);font-weight:800;padding:2px 3px;color:#0d252655}
+.sq.a{background:var(--sand)}.sq.b{background:var(--jade)}
+.sq.f{background:var(--saffron);color:#0d2526;font-size:clamp(12px,4vw,20px);text-align:center}
+.sq:first-child{border-top-left-radius:9px}.sq:nth-child(10){border-top-right-radius:9px}
+.sq:nth-child(91){border-bottom-left-radius:9px}.sq:last-child{border-bottom-right-radius:9px}
+#deco,#toks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.tok{position:absolute;width:5.4%;aspect-ratio:1;border-radius:50%;border:2px solid #fff;display:grid;place-items:center;
+ color:#fff;font-size:clamp(7px,2.4vw,12px);font-weight:900;box-shadow:0 3px 5px #0008;
+ transform:translate(-50%,-50%);transition:left .24s cubic-bezier(.3,1.5,.5,1),top .24s cubic-bezier(.3,1.5,.5,1)}
+.tok.slide{transition:left .9s ease-in-out,top .9s ease-in-out;z-index:3;transform:translate(-50%,-50%) scale(1.25)}
+#ctl{display:flex;align-items:center;gap:14px;width:100%;max-width:520px;justify-content:center}
+#die{width:64px;height:64px;border-radius:14px;background:#fff9ea;box-shadow:inset 0 -4px 0 #d9c79a,0 6px 14px #0007;
+ display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:9px;flex:none}
+#die i{border-radius:50%;margin:auto;width:12px;height:12px}
+#die i.on{background:#0d2526}
+#die.shake{animation:shake .14s infinite}
+@keyframes shake{25%{transform:rotate(-14deg) translateY(-4px)}75%{transform:rotate(14deg) translateY(-4px)}}
+#roll{flex:1;max-width:300px;height:56px;border:0;border-radius:16px;background:var(--saffron);color:#0d2526;font:800 18px inherit;
+ font-family:inherit;box-shadow:0 5px 0 #b97d0d;transition:transform .08s,box-shadow .08s,opacity .2s}
+#roll:active:not(:disabled){transform:translateY(4px);box-shadow:0 1px 0 #b97d0d}
+#roll:disabled{background:#ffffff1f;color:#f1e3bfaa;box-shadow:none}
+#log{font-size:13px;text-align:center;min-height:36px;max-width:520px;opacity:.9}
+#win{position:fixed;inset:0;background:#0d2526ee;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+ font-size:20px;text-align:center;z-index:9}
+#win.show{display:flex}#win span{font-size:84px;animation:hop 1s ease-in-out infinite}
+@keyframes hop{50%{transform:translateY(-16px) rotate(8deg)}}
+#err{margin:auto;text-align:center;padding:30px;display:none}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body>
+<div id="players"></div>
+<div id="board"><svg id="deco" viewBox="0 0 100 100"></svg><div id="toks"></div></div>
+<div id="ctl"><div id="die"></div><button id="roll" disabled>Memuat…</button></div>
+<div id="log"></div>
+<div id="win"></div><div id="err"></div>
+<script>
+const tg=window.Telegram?.WebApp||{};tg.ready?.();tg.expand?.();tg.setHeaderColor?.("#0d2526");tg.setBackgroundColor?.("#0d2526");
+const room=new URLSearchParams(location.search).get("room")||tg.initDataUnsafe?.start_param;
+const $=id=>document.getElementById(id),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const hap=(t="selection")=>{try{t=="selection"?tg.HapticFeedback.selectionChanged():t=="ok"?tg.HapticFeedback.notificationOccurred("success"):tg.HapticFeedback.notificationOccurred("warning")}catch(e){}};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const OFF=[[-1.6,-1.6],[1.6,-1.6],[-1.6,1.6],[1.6,1.6]];
+const PIPS={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+let S=null,lastSeq=-1,busy=false,shown={},built=false,deadline=0;
+const C=n=>{const r=Math.floor((n-1)/10),i=(n-1)%10,c=r%2?9-i:i;return[c*10+5,(9-r)*10+5]};
+
+function die(n){$("die").innerHTML=[...Array(9)].map((_,i)=>`<i class="${PIPS[n].includes(i)?"on":""}"></i>`).join("")}
+async function rollDie(n){const d=$("die");d.classList.add("shake");for(let i=0;i<9;i++){die(1+Math.floor(Math.random()*6));hap();await sleep(75)}d.classList.remove("shake");die(n)}
+
+function build(b){
+ let h="";for(let i=0;i<10;i++){const r=9-i;for(let j=0;j<10;j++){const n=r*10+(r%2?10-j:j+1);
+  h+=`<div class="sq ${n==100?"f":(r+j)%2?"a":"b"}">${n==100?"👑":n}</div>`}}
+ $("board").insertAdjacentHTML("afterbegin",h);
+ let s="";
+ for(const[a,z]of Object.entries(b.ladders)){const[x1,y1]=C(+a),[x2,y2]=C(+z),dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy),nx=-dy/L*1.25,ny=dx/L*1.25;
+  s+=`<g stroke-linecap="round"><line x1="${x1+nx}" y1="${y1+ny}" x2="${x2+nx}" y2="${y2+ny}" stroke="#7a4e28" stroke-width="1"/><line x1="${x1-nx}" y1="${y1-ny}" x2="${x2-nx}" y2="${y2-ny}" stroke="#7a4e28" stroke-width="1"/>`;
+  const k=Math.max(2,Math.floor(L/4.5));for(let i=1;i<=k;i++){const t=i/(k+1);s+=`<line x1="${x1+dx*t+nx}" y1="${y1+dy*t+ny}" x2="${x1+dx*t-nx}" y2="${y1+dy*t-ny}" stroke="#a8743a" stroke-width=".8"/>`}s+="</g>"}
+ const sc=["#e2574c","#9b5de5","#2a9d8f","#e76f51","#3d5a80","#c0392b","#6a994e","#d4a017","#8e6bbf","#d1495b"];
+ Object.entries(b.snakes).forEach(([a,z],i)=>{const[x1,y1]=C(+a),[x2,y2]=C(+z),dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy),nx=-dy/L,ny=dx/L,k=L*.2*(i%2?1:-1);
+  const d=`M${x1} ${y1}C${x1+dx*.33+nx*k} ${y1+dy*.33+ny*k} ${x1+dx*.66-nx*k} ${y1+dy*.66-ny*k} ${x2} ${y2}`,col=sc[i%sc.length];
+  s+=`<path d="${d}" fill="none" stroke="#0007" stroke-width="3.1" stroke-linecap="round" transform="translate(.35 .5)"/><path d="${d}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1" stroke-dasharray="1 2.2" stroke-linecap="round"/><circle cx="${x1}" cy="${y1}" r="2.3" fill="${col}"/><circle cx="${x1-.8}" cy="${y1-.6}" r=".6" fill="#fff"/><circle cx="${x1+.8}" cy="${y1-.6}" r=".6" fill="#fff"/><circle cx="${x1-.8}" cy="${y1-.6}" r=".25" fill="#000"/><circle cx="${x1+.8}" cy="${y1-.6}" r=".25" fill="#000"/>`});
+ $("deco").innerHTML=s;
+ $("toks").innerHTML=S.players.map(p=>`<div class="tok" id="t${p.id}" style="background:${p.color}">${esc([...p.name][0]||"?")}</div>`).join("");
+ built=true;
+}
+const posMap=s=>Object.fromEntries(s.players.map(p=>[p.id,p.pos]));
+function tokens(){S.players.forEach((p,i)=>{const e=$("t"+p.id);if(!e)return;const[x,y]=C(Math.max(1,shown[p.id]||0));
+ e.style.left=`calc(${x}% + ${OFF[i][0]}%)`;e.style.top=`calc(${y}% + ${OFF[i][1]}%)`})}
+function render(){
+ $("players").innerHTML=S.players.map((p,i)=>`<div class="pl ${S.status=="playing"&&S.turn==i?"on":""}"><i style="background:${p.color}"></i><div style="min-width:0"><b>${esc(p.name)}</b><small>${shown[p.id]?"Kotak "+shown[p.id]:"Start"}${p.id==S.me?" · kamu":""}</small></div></div>`).join("");
+ tokens();
+ const cur=S.players[S.turn],mine=S.status=="playing"&&cur.id==S.me,b=$("roll");
+ b.disabled=!mine;
+ b.textContent=S.status=="lobby"?"Menunggu host memulai…":S.status=="finished"?"Game selesai":mine?"🎲 Lempar dadu":`Giliran ${cur.name}`+(S.players.some(p=>p.id==S.me)?"":" (menonton)");
+ if(S.status=="finished"){const w=S.players.find(p=>p.id==S.winner);$("win").innerHTML=`<span>🏆</span><b>${esc(w.name)}</b> menang!<small>${w.id==S.me?"Selamat, kamu juara!":"Sampai jumpa di game berikutnya"}</small>`;$("win").classList.add("show");hap("ok")}
+}
+async function animate(ev,s){
+ const p=s.players.find(x=>x.id==ev.uid),n=esc(p.name);
+ $("log").textContent=`${p.name} melempar dadu…`;
+ await rollDie(ev.dice);
+ if(!ev.path.length){$("log").textContent=`${p.name} dapat ${ev.dice}, tapi harus pas di kotak 100.`;await sleep(700);return}
+ for(const q of ev.path){shown[ev.uid]=q;tokens();hap();await sleep(230)}
+ let m=`${p.name} dapat ${ev.dice} → kotak ${ev.path.at(-1)}`;
+ if(ev.jump){const up=ev.jump>ev.path.at(-1);m+=up?` 🪜 naik ke ${ev.jump}!`:` 🐍 digigit ular, turun ke ${ev.jump}`;
+  $("log").textContent=m;await sleep(350);const e=$("t"+ev.uid);e.classList.add("slide");shown[ev.uid]=ev.jump;tokens();hap(up?"ok":"warn");await sleep(950);e.classList.remove("slide")}
+ else if(ev.dice==6&&ev.to!=100)m+=" · dapat giliran lagi!";
+ $("log").textContent=m;
+}
+async function ingest(s){
+ if(s.error){$("err").style.display="block";$("err").textContent=s.error;document.querySelectorAll("#players,#board,#ctl,#log").forEach(e=>e.style.display="none");return}
+ S=s;deadline=Date.now()+s.tleft*1000;
+ if(!built){build(s.board);lastSeq=s.seq;shown=posMap(s);if(s.last){const p=s.players.find(x=>x.id==s.last.uid);$("log").textContent=`Terakhir: ${p.name} dapat ${s.last.dice}.`}die(s.last?s.last.dice:1);render();return}
+ if(s.seq>lastSeq&&!busy){busy=true;const ev=s.last,missed=s.seq-lastSeq>1;lastSeq=s.seq;
+  if(!missed)await animate(ev,s);shown=posMap(S);busy=false}
+ if(!busy){shown=posMap(S);render()}
+}
+async function api(p){const r=await fetch("/api/"+p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room,init:tg.initData||""})});return r.json()}
+async function poll(){try{await ingest(await api("state"))}catch(e){}setTimeout(poll,1300)}
+$("roll").onclick=async()=>{$("roll").disabled=true;hap();try{await ingest(await api("roll"))}catch(e){}};
+if(!room){ $("err").style.display="block";$("err").textContent="Room tidak ditemukan. Buka game lewat tombol Main di bot." }else poll();
+</script></body></html>
