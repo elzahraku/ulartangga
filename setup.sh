@@ -37,8 +37,13 @@ else
   API_ID=$(ask "API_ID")
   API_HASH=$(ask "API_HASH")
   BOT_TOKEN=$(ask "BOT_TOKEN")
-  DOMAIN=$(ask "Domain/subdomain untuk mini app (contoh game.domainmu.com)")
-  [ -n "$API_ID" ] && [ -n "$API_HASH" ] && [ -n "$BOT_TOKEN" ] && [ -n "$DOMAIN" ] || die "Semua isian wajib diisi."
+  DOMAIN=$(ask "Domain mini app (KOSONGKAN jika tidak punya domain -> otomatis pakai IP VPS via sslip.io)" "")
+  [ -n "$API_ID" ] && [ -n "$API_HASH" ] && [ -n "$BOT_TOKEN" ] || die "API_ID, API_HASH, dan BOT_TOKEN wajib diisi."
+  if [ -z "$DOMAIN" ]; then
+    VPSIP=$(curl -fsS4 https://api.ipify.org 2>/dev/null) || die "Gagal mendeteksi IP publik VPS."
+    DOMAIN="${VPSIP//./-}.sslip.io"
+    ok "Memakai alamat otomatis: $DOMAIN (mengarah ke $VPSIP)"
+  fi
   DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN%%/*}"
   PORT=8095
   while ss -ltn "sport = :$PORT" 2>/dev/null | grep -q LISTEN; do PORT=$((PORT+1)); done
